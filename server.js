@@ -1,0 +1,199 @@
+const express = require('express');
+const { WebSocketServer } = require('ws');
+const http = require('http');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const apn = require('@parse/node-apn');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ---- APNs ----
+let apnProvider = null;
+if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
+  apnProvider = new apn.Provider({
+    token: {
+      key: Buffer.from(process.env.APN_KEY.replace(/\\n/g, '\n')),
+      keyId: process.env.APN_KEY_ID,
+      teamId: process.env.APN_TEAM_ID,
+    },
+    production: true,
+  });
+}
+
+const BUNDLE_ID = process.env.BUNDLE_ID || 'com.sounddepo.setcom';
+
+async function sendPush(token, title, body) {
+  if (!apnProvider || !token) return;
+  const note = new apn.Notification();
+  note.expiry = Math.floor(Date.now() / 1000) + 60;
+  note.badge = 1;
+  note.sound = 'default';
+  note.alert = { title, body };
+  note.topic = BUNDLE_ID;
+  await apnProvider.send(note, token).catch(() => {});
+}
+
+async function sendVoIPPush(token, data) {
+  if (!apnProvider || !token) return;
+  const note = new apn.Notification();
+  note.expiry = Math.floor(Date.now() / 1000) + 30;
+  note.payload = data;
+  note.topic = `${BUNDLE_ID}.voip`;
+  note.priority = 10;
+  await apnProvider.send(note, token).catch(() => {});
+}
+
+async function sendPTTPush(token, speaker) {
+  if (!apnProvider || !token) return;
+  const note = new apn.Notification();
+  note.expiry = Math.floor(Date.now() / 1000) + 30;
+  note.payload = { speaker };
+  note.topic = `${BUNDLE_ID}.pushToTalk`;
+  note.priority = 10;
+  await apnProvider.send(note, token).catch(() => {});
+}
+
+// ---- Client store ----
+// { ws, name, role, channel, device, pushToken, voipToken, pttToken }
+const clients = new Map();
+
+function getRoster() {
+  const list = [];
+  for (const [id, c] of clients) {
+    if (c.device === 'watch' || c.device === 'native-audio') continue;
+    if (c.name) list.push({ id, name: c.name, role: c.role, channel: c.channel });
+  }
+  return list;
+}
+
+function broadcast(data, excludeId = null) {
+  const msg = JSON.stringify(data);
+  for (const [id, c] of clients) {
+    if (id !== excludeId && c.ws.readyState === 1) c.ws.send(msg);
+  }
+}
+
+function sendTo(id, data) {
+  const c = clients.get(id);
+  if (c && c.ws.readyState === 1) c.ws.send(JSON.stringify(data));
+}
+
+// ---- Per-channel call cooldown (5s) ----
+const callCooldown = new Map();
+
+// ---- WebSocket ----
+wss.on('connection', (ws) => {
+  const id = uuidv4();
+  clients.set(id, { ws, name: null, role: null, channel: null, device: 'phone',
+                     pushToken: null, voipToken: null, pttToken: null });
+
+  ws.send(JSON.stringify({ type: 'welcome', id, roster: getRoster() }));
+
+  ws.on('message', async (raw, isBinary) => {
+    // ---- Binary audio frames: route to matching-channel clients ----
+    if (isBinary) {
+      const client = clients.get(id);
+      if (!client) return;
+      for (const [peerId, peer] of clients) {
+        if (peerId === id) continue;
+        if (peer.name && client.name && peer.name === client.name) continue; // no self-echo
+        const chMatch = client.channel === 'all' || peer.channel === 'all'
+                     || peer.channel === client.channel;
+        if (!chMatch) continue;
+        if (peer.ws.readyState === 1) peer.ws.send(raw, { binary: true });
+      }
+      return;
+    }
+
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    const client = clients.get(id);
+    if (!client) return;
+
+    switch (msg.type) {
+
+      case 'join':
+        client.name    = msg.name    || 'Unknown';
+        client.role    = msg.role    || 'crew';
+        client.channel = msg.channel || 'all';
+        client.device  = msg.device  || 'phone';
+        console.log(`[JOIN] ${client.name} (${client.role}) ch=${client.channel} dev=${client.device}`);
+        broadcast({ type: 'roster', roster: getRoster() });
+        break;
+
+      case 'channel-change':
+        client.channel = msg.channel || client.channel;
+        broadcast({ type: 'roster', roster: getRoster() });
+        break;
+
+      case 'ptt-start':
+        broadcast({ type: 'ptt-start', from: id, name: client.name, channel: msg.channel }, id);
+        // Wake backgrounded phones on the same channel
+        for (const [, peer] of clients) {
+          if (peer.name === client.name) continue;
+          const ch = msg.channel;
+          const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
+          if (!chMatch) continue;
+          if (peer.pttToken) sendPTTPush(peer.pttToken, client.name).catch(() => {});
+        }
+        break;
+
+      case 'ptt-stop':
+        broadcast({ type: 'ptt-stop', from: id, name: client.name }, id);
+        break;
+
+      case 'call-channel': {
+        const ch = msg.channel;
+        const now = Date.now();
+        const key = `${client.name}:${ch}`;
+        if (callCooldown.get(key) && now - callCooldown.get(key) < 5000) {
+          sendTo(id, { type: 'call-result', channel: ch, cooldown: true });
+          break;
+        }
+        callCooldown.set(key, now);
+        let pushed = 0;
+        for (const [peerId, peer] of clients) {
+          if (peerId === id) continue;
+          const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
+          if (!chMatch) continue;
+          sendTo(peerId, { type: 'incoming-call', from: id, name: client.name, channel: ch });
+          if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
+          else if (peer.pushToken) { sendPush(peer.pushToken, 'SETCOM', `${client.name} is calling`); pushed++; }
+        }
+        sendTo(id, { type: 'call-result', channel: ch, pushed });
+        break;
+      }
+
+      case 'register-push-token':
+        client.pushToken = msg.token;
+        break;
+
+      case 'register-voip-token':
+        client.voipToken = msg.token;
+        break;
+
+      case 'register-ptt-token':
+        client.pttToken = msg.token;
+        break;
+
+      default:
+        break;
+    }
+  });
+
+  ws.on('close', () => {
+    clients.delete(id);
+    broadcast({ type: 'roster', roster: getRoster() });
+    console.log(`[LEAVE] ${clients.get(id)?.name || id}`);
+  });
+
+  ws.on('error', () => clients.delete(id));
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Setcom server running on port ${PORT}`));

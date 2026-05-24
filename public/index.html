@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<title>SETCOM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:     #0d0f0e;
+    --surface:#141816;
+    --border: #1f2820;
+    --text:   #d4e8d4;
+    --muted:  #4a5e4d;
+    --green:  #39ff6a;
+    --red:    #ff4a4a;
+    --amber:  #ffb347;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow Condensed', sans-serif; }
+
+  /* ---- Login ---- */
+  #loginScreen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100dvh; gap: 24px; padding: 32px 24px;
+  }
+  #loginScreen h1 { font-size: 36px; font-weight: 700; letter-spacing: 8px; color: var(--green); }
+  #loginScreen p  { font-size: 11px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+  .field { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 320px; }
+  .field label { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+  .field input, .field select {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 12px 14px; border-radius: 8px;
+    font-family: 'Barlow Condensed', sans-serif; font-size: 16px; width: 100%;
+    -webkit-appearance: none;
+  }
+  .field select option { background: var(--surface); }
+  #joinBtn {
+    width: 100%; max-width: 320px; padding: 16px; background: var(--green);
+    border: none; border-radius: 10px; font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px; font-weight: 700; letter-spacing: 4px; color: #0d0f0e;
+    cursor: pointer; margin-top: 8px;
+  }
+
+  /* ---- Main app ---- */
+  #appScreen { display: none; flex-direction: column; min-height: 100dvh; }
+  .app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; padding-top: max(16px, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--border);
+  }
+  .app-title { font-size: 20px; font-weight: 700; letter-spacing: 6px; color: var(--green); }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .conn-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  .scroll { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ---- Channel cards ---- */
+  .ch-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px;
+    cursor: pointer; transition: border-color 0.15s;
+  }
+  .ch-card.selected { border-color: var(--green); }
+  .ch-card.active-tx { border-color: var(--amber) !important; background: #1a1500; }
+  .ch-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--muted); flex-shrink: 0; }
+  .ch-card.selected .ch-dot { border-color: var(--green); background: var(--green); }
+  .ch-info { flex: 1; }
+  .ch-name { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+  .ch-sub  { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+  .ch-status { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+  .ch-status.tx { color: var(--amber); }
+  .call-btn {
+    padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px;
+    background: transparent; color: var(--text); font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; font-weight: 600; letter-spacing: 2px; cursor: pointer;
+    white-space: nowrap; transition: all 0.15s;
+  }
+  .call-btn:active { background: var(--border); }
+  .call-btn.sent { border-color: var(--green); color: var(--green); }
+
+  /* ---- PTT ---- */
+  .ptt-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    padding: 24px 20px; border-top: 1px solid var(--border);
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .ptt-label { font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+  .ptt-label span { color: var(--text); }
+  .ptt-btn {
+    width: 160px; height: 160px; border-radius: 50%;
+    border: 3px solid var(--muted); background: var(--surface);
+    cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    position: relative; user-select: none; -webkit-user-select: none;
+    touch-action: none;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: transform 0.1s, border-color 0.1s;
+  }
+  .ptt-btn.tx {
+    border-color: var(--green) !important;
+    box-shadow: 0 0 0 4px rgba(57,255,106,0.15), 0 0 48px rgba(57,255,106,0.2);
+    transform: scale(0.97);
+  }
+  .ptt-icon { font-size: 38px; line-height: 1; pointer-events: none; }
+  .ptt-text {
+    font-size: 12px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); pointer-events: none; transition: color 0.1s;
+  }
+  .ptt-btn.tx .ptt-text { color: var(--green); }
+  .tx-status { font-size: 11px; letter-spacing: 2px; color: var(--muted); min-height: 16px; }
+  .tx-status.on { color: var(--green); }
+
+  /* ---- Incoming banner ---- */
+  #incomingBanner {
+    display: none; background: #0f1a10; border: 1px solid var(--green);
+    border-radius: 10px; padding: 12px 16px; margin: 0 20px;
+    font-size: 13px; letter-spacing: 2px; color: var(--green); text-align: center;
+  }
+
+  /* ---- Crew ---- */
+  .section-title { font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+  .roster-list { display: flex; flex-direction: column; gap: 6px; }
+  .roster-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .roster-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .roster-name { font-size: 15px; font-weight: 600; letter-spacing: 1px; flex: 1; }
+  .roster-role { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+
+  #notice {
+    background: #1a0f0f; border: 1px solid var(--red); border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; color: var(--red); letter-spacing: 1px;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen">
+  <h1>SETCOM</h1>
+  <p>Film Set Intercom</p>
+  <div id="notice" class="hidden"></div>
+  <div class="field">
+    <label>Your Name</label>
+    <input id="nameInput" type="text" placeholder="e.g. Randy" autocomplete="off" autocapitalize="words">
+  </div>
+  <div class="field">
+    <label>Role</label>
+    <select id="roleInput">
+      <option value="director">Director</option>
+      <option value="dp">Director of Photography</option>
+      <option value="1ac">1st AC</option>
+      <option value="2ac">2nd AC</option>
+      <option value="boom" selected>Boom Operator</option>
+      <option value="sound">Sound Mixer</option>
+      <option value="pa">PA</option>
+      <option value="ad">AD</option>
+      <option value="hmu">Hair & Makeup</option>
+      <option value="ge">Gaffer / Electric</option>
+      <option value="grip">Grip</option>
+      <option value="other">Other</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Default Channel</label>
+    <select id="channelInput">
+      <option value="sound">Sound Dept</option>
+      <option value="camera">Camera Dept</option>
+      <option value="director">Director</option>
+      <option value="ad">AD / Production</option>
+      <option value="ge">Grip / Electric</option>
+      <option value="hmu">Hair & Makeup</option>
+      <option value="pa">PA Channel</option>
+      <option value="all">All — Broadcast</option>
+    </select>
+  </div>
+  <button id="joinBtn" onclick="join()">JOIN</button>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="appScreen">
+  <div class="app-header">
+    <div class="app-title">SETCOM</div>
+    <div class="conn-dot" id="connDot"></div>
+  </div>
+
+  <div class="scroll">
+    <div id="notice2" class="hidden"></div>
+    <div id="incomingBanner"></div>
+
+    <!-- Channels -->
+    <div class="section-title">CHANNELS</div>
+    <div id="channelList"></div>
+
+    <!-- Crew -->
+    <div class="section-title">CREW ONLINE</div>
+    <div class="roster-list" id="rosterList"><div class="roster-item"><span style="color:var(--muted);font-size:12px">No one else online</span></div></div>
+  </div>
+
+  <!-- PTT -->
+  <div class="ptt-wrap">
+    <div class="ptt-label">TRANSMIT TO: <span id="pttTarget">—</span></div>
+    <button class="ptt-btn" id="pttBtn"
+      onmousedown="startTx()" onmouseup="stopTx()" onmouseleave="stopTx()"
+      ontouchstart="startTx(event)" ontouchend="stopTx(event)" ontouchcancel="stopTx(event)">
+      <div class="ptt-icon">🎙</div>
+      <div class="ptt-text">PUSH TO TALK</div>
+    </button>
+    <div class="tx-status" id="txStatus">— STANDBY —</div>
+  </div>
+</div>
+
+<!-- Audio container for incoming playback -->
+<div id="audioContainer" style="display:none"></div>
+
+<script>
+// ---- Config ----
+const WS_URL = location.origin.replace(/^http/, 'ws');
+
+const CHANNELS = [
+  { id: 'director', label: 'DIRECTOR',     sub: 'Director / DIT',        color: '#a78bfa' },
+  { id: 'camera',   label: 'CAMERA',        sub: 'Camera department',     color: '#60a5fa' },
+  { id: 'sound',    label: 'SOUND DEPT',    sub: 'Sound team',            color: '#34d399' },
+  { id: 'ad',       label: 'AD / PROD',     sub: 'Production',            color: '#f472b6' },
+  { id: 'ge',       label: 'GRIP / ELEC',   sub: 'Gaffer & Grip',         color: '#fb923c' },
+  { id: 'hmu',      label: 'HMU',           sub: 'Hair & Makeup',         color: '#e879f9' },
+  { id: 'pa',       label: 'PA CHANNEL',    sub: 'Production assistants', color: '#818cf8' },
+  { id: 'all',      label: 'CH ALL — BROADCAST', sub: 'All departments',  color: '#fbbf24' },
+];
+
+const chLabels = {};
+CHANNELS.forEach(c => { chLabels[c.id] = c.label; });
+
+// ---- State ----
+let myName = '', myRole = '', selectedCh = 'sound';
+let ws = null;
+let myId = null;
+let isTransmitting = false;
+let localStream = null;
+let micGranted = false;
+
+// Web Audio (binary relay)
+let audioCtx = null;
+let txSource = null, txScript = null, txSilence = null;
+
+// Incoming PTT playback
+const activeTx = {};  // peerId -> channel
+
+// Native bridge (iOS Capacitor only)
+function nativeBridge(obj) {
+  try { window.webkit.messageHandlers.setcomBridge.postMessage(obj); } catch(_){}
+}
+
+// Called by native PTT framework
+let _nativePTTActive = false;
+function onNativePTTBegin() {
+  _nativePTTActive = true;
+  if (isTransmitting) return;
+  isTransmitting = true;
+  document.getElementById('pttBtn').classList.add('tx');
+  document.getElementById('txStatus').textContent = '● TRANSMITTING';
+  document.getElementById('txStatus').classList.add('on');
+  wsSend({ type: 'ptt-start', channel: selectedCh });
+  startBinaryRelay();
+}
+function onNativePTTEnd() {
+  _nativePTTActive = false;
+  if (!isTransmitting) return;
+  isTransmitting = false;
+  document.getElementById('pttBtn').classList.remove('tx');
+  document.getElementById('txStatus').textContent = '— STANDBY —';
+  document.getElementById('txStatus').classList.remove('on');
+  stopBinaryRelay();
+  wsSend({ type: 'ptt-stop' });
+}
+
+// Push token callbacks
+let pttPushToken = null;
+function receivePTTPushToken(token) {
+  pttPushToken = token;
+  if (ws && ws.readyState === 1) wsSend({ type: 'register-ptt-token', token });
+}
+function receiveVoIPToken(token) {
+  if (ws && ws.readyState === 1) wsSend({ type: 'register-voip-token', token });
+}
+function nativeAudioHandoff() {}  // reserved for background handoff
+function webRTCHandback() {}
+
+// ---- Join ----
+async function join() {
+  const nameVal = document.getElementById('nameInput').value.trim();
+  if (!nameVal) { alert('Enter your name'); return; }
+  myName    = nameVal.toUpperCase();
+  myRole    = document.getElementById('roleInput').value;
+  selectedCh = document.getElementById('channelInput').value;
+
+  // Unlock Web Audio inside user gesture
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  const buf = audioCtx.createBuffer(1, 1, 16000);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf; src.connect(audioCtx.destination); src.start();
+
+  await getMic();
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display   = 'flex';
+
+  buildChannelList();
+  selectChannel(selectedCh);
+  connectWS();
+
+  // Tell native about session
+  nativeBridge({ type: 'session-info', name: myName, role: myRole, channel: selectedCh });
+}
+
+// ---- WebSocket ----
+let reconnectTimer = null;
+function connectWS() {
+  if (ws && ws.readyState < 2) return;
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    document.getElementById('connDot').classList.add('on');
+    wsSend({ type: 'join', name: myName, role: myRole, channel: selectedCh });
+    if (pttPushToken) wsSend({ type: 'register-ptt-token', token: pttPushToken });
+  };
+
+  ws.onclose = () => {
+    document.getElementById('connDot').classList.remove('on');
+    if (isTransmitting) stopTx();
+    reconnectTimer = setTimeout(connectWS, 2000);
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) { playAudio(e.data); return; }
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    switch (msg.type) {
+      case 'welcome':
+        myId = msg.id;
+        updateRoster(msg.roster);
+        break;
+      case 'roster':
+        updateRoster(msg.roster);
+        break;
+      case 'ptt-start':
+        activeTx[msg.from] = msg.channel;
+        showIncoming(msg.name, msg.channel);
+        nativeBridge({ type: 'ptt-active-speaker', name: msg.name });
+        break;
+      case 'ptt-stop':
+        delete activeTx[msg.from];
+        if (Object.keys(activeTx).length === 0) hideIncoming();
+        nativeBridge({ type: 'ptt-active-speaker', name: null });
+        break;
+      case 'incoming-call':
+        handleCall(msg.name, msg.channel);
+        break;
+      case 'call-result':
+        handleCallResult(msg);
+        break;
+    }
+  };
+}
+
+function wsSend(data) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
+}
+
+// ---- PTT ----
+async function startTx(e) {
+  if (e) e.preventDefault();
+  if (isTransmitting) return;
+  const ok = await getMic();
+  if (!ok) return;
+  haptic('HEAVY');
+  isTransmitting = true;
+  document.getElementById('pttBtn').classList.add('tx');
+  document.getElementById('txStatus').textContent = '● TRANSMITTING';
+  document.getElementById('txStatus').classList.add('on');
+  setTimeout(async () => {
+    if (!isTransmitting) return;
+    wsSend({ type: 'ptt-start', channel: selectedCh });
+    await startBinaryRelay();
+    if (!_nativePTTActive) nativeBridge({ type: 'ptt-begin' });
+  }, 80);
+}
+
+function stopTx(e) {
+  if (e) e.preventDefault();
+  if (!isTransmitting) return;
+  const wasNative = _nativePTTActive;
+  _nativePTTActive = false;
+  haptic('LIGHT');
+  isTransmitting = false;
+  document.getElementById('pttBtn').classList.remove('tx');
+  document.getElementById('txStatus').textContent = '— STANDBY —';
+  document.getElementById('txStatus').classList.remove('on');
+  stopBinaryRelay();
+  wsSend({ type: 'ptt-stop' });
+  if (wasNative) nativeBridge({ type: 'ptt-end' });
+}
+
+// Spacebar
+document.addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); startTx(); } });
+document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventDefault(); stopTx(); } });
+
+// ---- Binary relay (send) ----
+async function startBinaryRelay() {
+  if (!localStream || !ws || ws.readyState !== 1 || !audioCtx) return;
+  if (txScript) return;
+  try {
+    if (audioCtx.state !== 'running') await audioCtx.resume();
+    txSource = audioCtx.createMediaStreamSource(localStream);
+    txScript = audioCtx.createScriptProcessor(512, 1, 1);
+    txScript.onaudioprocess = (ev) => {
+      if (!isTransmitting || !ws || ws.readyState !== 1) return;
+      const f32 = ev.inputBuffer.getChannelData(0);
+      const i16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767));
+      ws.send(i16.buffer);
+    };
+    txSilence = audioCtx.createGain();
+    txSilence.gain.value = 0;
+    txSilence.connect(audioCtx.destination);
+    txSource.connect(txScript);
+    txScript.connect(txSilence);
+  } catch (err) { console.warn('[TX] relay failed:', err); }
+}
+
+function stopBinaryRelay() {
+  try { if (txScript)  { txScript.disconnect();  txScript  = null; } } catch(_){}
+  try { if (txSource)  { txSource.disconnect();  txSource  = null; } } catch(_){}
+  try { if (txSilence) { txSilence.disconnect(); txSilence = null; } } catch(_){}
+}
+
+// ---- Binary relay (receive) ----
+let _nextPlayTime = 0;
+function playAudio(arrayBuffer) {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  const i16 = new Int16Array(arrayBuffer);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  const buf = audioCtx.createBuffer(1, f32.length, 16000);
+  buf.copyToChannel(f32, 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  const start = Math.max(now, _nextPlayTime);
+  src.start(start);
+  _nextPlayTime = start + buf.duration;
+}
+
+// ---- Mic ----
+async function getMic() {
+  if (micGranted && localStream) return true;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      video: false
+    });
+    micGranted = true;
+    document.getElementById('notice').classList.add('hidden');
+    document.getElementById('notice2').classList.add('hidden');
+    return true;
+  } catch (err) {
+    const n = document.getElementById('notice');
+    n.classList.remove('hidden');
+    n.textContent = 'Mic access denied — please allow microphone in settings.';
+    return false;
+  }
+}
+
+// ---- Channels ----
+function buildChannelList() {
+  const list = document.getElementById('channelList');
+  list.innerHTML = '';
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '8px';
+  CHANNELS.forEach(ch => {
+    const card = document.createElement('div');
+    card.className = 'ch-card';
+    card.id = `ch-${ch.id}`;
+    card.onclick = () => selectChannel(ch.id);
+    card.innerHTML = `
+      <div class="ch-dot" id="dot-${ch.id}"></div>
+      <div class="ch-info">
+        <div class="ch-name" style="color:${ch.color}">${ch.label}</div>
+        <div class="ch-sub">${ch.sub}</div>
+        <div class="ch-status" id="status-${ch.id}">READY</div>
+      </div>
+      <button class="call-btn" id="call-${ch.id}" onclick="event.stopPropagation();callChannel('${ch.id}',this)">
+        ${ch.id === 'all' ? '📣 CALL ALL' : '📞 CALL'}
+      </button>`;
+    list.appendChild(card);
+  });
+}
+
+function selectChannel(ch) {
+  selectedCh = ch;
+  document.querySelectorAll('.ch-card').forEach(el => el.classList.remove('selected'));
+  const card = document.getElementById(`ch-${ch}`);
+  if (card) card.classList.add('selected');
+  document.getElementById('pttTarget').textContent = chLabels[ch] || ch.toUpperCase();
+  wsSend({ type: 'channel-change', channel: ch });
+  nativeBridge({ type: 'session-info', name: myName, role: myRole, channel: ch });
+}
+
+// ---- Incoming PTT banner ----
+const incomingTimer = {};
+function showIncoming(name, channel) {
+  const banner = document.getElementById('incomingBanner');
+  banner.style.display = 'block';
+  banner.textContent = `▶ ${name} — ${chLabels[channel] || channel}`;
+  document.getElementById(`ch-${channel}`)?.classList.add('active-tx');
+  const el = document.getElementById(`status-${channel}`);
+  if (el) { el.textContent = `${name} TRANSMITTING`; el.classList.add('tx'); }
+}
+function hideIncoming() {
+  document.getElementById('incomingBanner').style.display = 'none';
+  document.querySelectorAll('.ch-card').forEach(el => el.classList.remove('active-tx'));
+  document.querySelectorAll('.ch-status').forEach(el => { el.textContent = 'READY'; el.classList.remove('tx'); });
+}
+
+// ---- Calls / Page ----
+const callCooldownClient = {};
+async function callChannel(ch, btn) {
+  const now = Date.now();
+  if (callCooldownClient[ch] && now - callCooldownClient[ch] < 1000) return;
+  callCooldownClient[ch] = now;
+  haptic('MEDIUM');
+  wsSend({ type: 'call-channel', channel: ch });
+}
+function handleCall(name, channel) {
+  haptic('NOTIFICATION');
+  const banner = document.getElementById('incomingBanner');
+  banner.style.display = 'block';
+  banner.textContent = `📞 ${name} calling ${chLabels[channel] || channel}`;
+  setTimeout(() => { if (Object.keys(activeTx).length === 0) hideIncoming(); }, 4000);
+}
+function handleCallResult(msg) {
+  if (msg.cooldown) return;
+  const btn = document.getElementById(`call-${msg.channel}`);
+  if (btn) { btn.classList.add('sent'); setTimeout(() => btn.classList.remove('sent'), 2000); }
+}
+
+// ---- Roster ----
+function updateRoster(roster) {
+  const list = document.getElementById('rosterList');
+  const others = roster.filter(r => r.id !== myId);
+  if (others.length === 0) {
+    list.innerHTML = '<div class="roster-item"><span style="color:var(--muted);font-size:12px">No one else online</span></div>';
+    return;
+  }
+  list.innerHTML = others.map(r => `
+    <div class="roster-item">
+      <div class="roster-dot"></div>
+      <div class="roster-name">${r.name}</div>
+      <div class="roster-role">${r.role || ''}</div>
+    </div>`).join('');
+}
+
+// ---- Haptics ----
+function haptic(style) {
+  try {
+    const cap = window.Capacitor;
+    if (!cap || cap.getPlatform() === 'web') return;
+    cap.Plugins.Haptics.impact({ style });
+  } catch(e) {}
+}
+
+// ---- Notification haptic for page alerts ----
+function hapticNotification() {
+  try {
+    const cap = window.Capacitor;
+    if (!cap || cap.getPlatform() === 'web') return;
+    cap.Plugins.Haptics.notification({ type: 'WARNING' });
+  } catch(e) {}
+}
+</script>
+</body>
+</html>

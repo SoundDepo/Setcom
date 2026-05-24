@@ -1,0 +1,13 @@
+{
+  "appId": "com.sounddepo.setcom",
+  "appName": "Setcom",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}
