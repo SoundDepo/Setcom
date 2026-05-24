@@ -102,11 +102,14 @@ wss.on('connection', (ws) => {
       if (!client._audioFrames) { client._audioFrames = 0; }
       client._audioFrames++;
       if (client._audioFrames === 1) console.log(`[AUDIO] first frame from ${client.name} (${raw.length} bytes)`);
+      // Use the active PTT channel if set (authoritative), fall back to join channel
+      const srcChannel = client.pttChannel || client.channel;
+      if (!srcChannel || srcChannel === '') return; // no routing until channel is known
       for (const [peerId, peer] of clients) {
         if (peerId === id) continue;
         if (peer.name && client.name && peer.name === client.name) continue; // no self-echo
-        const chMatch = client.channel === 'all' || peer.channel === 'all'
-                     || peer.channel === client.channel;
+        const chMatch = srcChannel === 'all' || peer.channel === 'all'
+                     || peer.channel === srcChannel;
         if (!chMatch) continue;
         if (peer.ws.readyState === 1) peer.ws.send(raw, { binary: true });
       }
@@ -123,7 +126,7 @@ wss.on('connection', (ws) => {
       case 'join':
         client.name    = msg.name    || 'Unknown';
         client.role    = msg.role    || 'crew';
-        client.channel = msg.channel || 'all';
+        client.channel = msg.channel || (msg.device === 'native-audio' ? '' : 'all');
         client.device  = msg.device  || 'phone';
         console.log(`[JOIN] ${client.name} (${client.role}) ch=${client.channel} dev=${client.device}`);
         broadcast({ type: 'roster', roster: getRoster() });
@@ -137,6 +140,7 @@ wss.on('connection', (ws) => {
       case 'ptt-start':
         console.log(`[PTT-START] ${client.name} → ${msg.channel}`);
         client.transmitting = true;
+        client.pttChannel = msg.channel;
         broadcast({ type: 'ptt-start', from: id, name: client.name, channel: msg.channel }, id);
         // Wake backgrounded phones on the same channel
         for (const [, peer] of clients) {
@@ -150,6 +154,7 @@ wss.on('connection', (ws) => {
 
       case 'ptt-stop':
         client.transmitting = false;
+        client.pttChannel = null;
         broadcast({ type: 'ptt-stop', from: id, name: client.name }, id);
         break;
 
