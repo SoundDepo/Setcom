@@ -111,6 +111,7 @@
   .ptt-btn.tx .ptt-text { color: var(--green); }
   .tx-status { font-size: 11px; letter-spacing: 2px; color: var(--muted); min-height: 16px; }
   .tx-status.on { color: var(--green); }
+  body.native .ptt-wrap { display: none; }
 
   /* ---- Incoming banner ---- */
   #incomingBanner {
@@ -224,6 +225,10 @@
 const WS_URL = (location.protocol === 'capacitor:' || location.protocol === 'ionic:')
   ? 'wss://setcom-production.up.railway.app'
   : location.origin.replace(/^http/, 'ws');
+
+if (location.protocol === 'capacitor:' || location.protocol === 'ionic:') {
+  document.body.classList.add('native');
+}
 
 const CHANNELS = [
   { id: 'director', label: 'DIRECTOR',     sub: 'Director / DIT',        color: '#a78bfa' },
