@@ -136,6 +136,7 @@ wss.on('connection', (ws) => {
 
       case 'ptt-start':
         console.log(`[PTT-START] ${client.name} → ${msg.channel}`);
+        client.transmitting = true;
         broadcast({ type: 'ptt-start', from: id, name: client.name, channel: msg.channel }, id);
         // Wake backgrounded phones on the same channel
         for (const [, peer] of clients) {
@@ -148,6 +149,7 @@ wss.on('connection', (ws) => {
         break;
 
       case 'ptt-stop':
+        client.transmitting = false;
         broadcast({ type: 'ptt-stop', from: id, name: client.name }, id);
         break;
 
@@ -191,12 +193,22 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    const client = clients.get(id);
+    if (client?.transmitting && client.name) {
+      broadcast({ type: 'ptt-stop', from: id, name: client.name }, id);
+    }
+    console.log(`[LEAVE] ${client?.name || id}`);
     clients.delete(id);
     broadcast({ type: 'roster', roster: getRoster() });
-    console.log(`[LEAVE] ${clients.get(id)?.name || id}`);
   });
 
-  ws.on('error', () => clients.delete(id));
+  ws.on('error', () => {
+    const client = clients.get(id);
+    if (client?.transmitting && client.name) {
+      broadcast({ type: 'ptt-stop', from: id, name: client.name }, id);
+    }
+    clients.delete(id);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
