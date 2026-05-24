@@ -113,28 +113,34 @@
   .tx-status.on { color: var(--green); }
   body.native .ptt-wrap { display: none; }
 
-  /* Native PTT bar — instant response, no hold needed */
+  /* Native PTT floating button */
   #nativePTTBar {
     display: none;
-    position: fixed; bottom: 0; left: 0; right: 0;
-    height: calc(60px + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    position: fixed;
+    right: 20px;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    width: 72px; height: 72px; border-radius: 50%;
     background: var(--surface);
-    border-top: 1px solid #222;
-    align-items: center; justify-content: center;
+    border: 2px solid #333;
+    align-items: center; justify-content: center; flex-direction: column; gap: 3px;
     user-select: none; -webkit-user-select: none;
     touch-action: manipulation; cursor: pointer;
-    transition: background 0.08s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    transition: border-color 0.08s, background 0.08s, box-shadow 0.08s;
     z-index: 100;
   }
-  #nativePTTBar.tx { background: #0a1f0d; border-top-color: var(--green); }
+  #nativePTTBar.tx {
+    background: #0a1f0d;
+    border-color: var(--green);
+    box-shadow: 0 0 0 4px rgba(57,255,106,0.15), 0 4px 24px rgba(57,255,106,0.25);
+  }
+  #nativePTTBar .ptt-fab-icon { font-size: 26px; pointer-events: none; line-height: 1; }
   #nativePTTBar span {
-    font-size: 13px; font-weight: 700; letter-spacing: 4px;
+    font-size: 8px; font-weight: 700; letter-spacing: 2px;
     color: var(--muted); text-transform: uppercase; pointer-events: none;
   }
   #nativePTTBar.tx span { color: var(--green); }
   body.native #nativePTTBar { display: flex; }
-  body.native .app-inner { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
 
   /* ---- Incoming banner ---- */
   #incomingBanner {
@@ -226,9 +232,10 @@
     <div class="roster-list" id="rosterList"><div class="roster-item"><span style="color:var(--muted);font-size:12px">No one else online</span></div></div>
   </div>
 
-  <!-- Native PTT bar — fires on touchstart, no hold required -->
+  <!-- Native PTT floating button — fires on touchstart, no hold required -->
   <div id="nativePTTBar">
-    <span id="nativePTTLabel">HOLD TO TALK</span>
+    <div class="ptt-fab-icon">🎙</div>
+    <span id="nativePTTLabel">PTT</span>
   </div>
 
   <!-- PTT -->
