@@ -177,7 +177,7 @@
   <div id="notice" class="hidden"></div>
   <div class="field">
     <label>Your Name</label>
-    <input id="nameInput" type="text" placeholder="e.g. Randy" autocomplete="off" autocapitalize="words">
+    <input id="nameInput" type="text" placeholder="e.g. Randy" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" autofocus>
   </div>
   <div class="field">
     <label>Role</label>
@@ -340,6 +340,10 @@ async function join() {
   myRole    = document.getElementById('roleInput').value;
   selectedCh = document.getElementById('channelInput').value;
 
+  localStorage.setItem('sc_name', document.getElementById('nameInput').value.trim());
+  localStorage.setItem('sc_role', myRole);
+  localStorage.setItem('sc_channel', selectedCh);
+
   // Unlock Web Audio inside user gesture
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   const buf = audioCtx.createBuffer(1, 1, 16000);
@@ -464,8 +468,20 @@ function stopTx(e) {
 }
 
 // Spacebar
-document.addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); startTx(); } });
-document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventDefault(); stopTx(); } });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat) {
+    const t = e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON') return;
+    e.preventDefault(); startTx();
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space') {
+    const t = e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON') return;
+    e.preventDefault(); stopTx();
+  }
+});
 
 // Native PTT bar — instant on touchstart, no hold delay
 (function () {
@@ -682,6 +698,22 @@ function hapticNotification() {
     cap.Plugins.Haptics.notification({ type: 'WARNING' });
   } catch(e) {}
 }
+
+// ---- Restore last session on load ----
+(function restoreSession() {
+  const name    = localStorage.getItem('sc_name');
+  const role    = localStorage.getItem('sc_role');
+  const channel = localStorage.getItem('sc_channel');
+  if (name)    document.getElementById('nameInput').value = name;
+  if (role)    document.getElementById('roleInput').value = role;
+  if (channel) document.getElementById('channelInput').value = channel;
+
+  ['nameInput', 'roleInput', 'channelInput'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('keydown', e => e.stopPropagation());
+    el.addEventListener('keyup',   e => e.stopPropagation());
+  });
+})();
 </script>
 </body>
 </html>
