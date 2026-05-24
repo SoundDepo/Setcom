@@ -479,6 +479,7 @@ document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventD
     _active = true;
     bar.classList.add('tx');
     lbl.textContent = '● TRANSMITTING';
+    haptic('HEAVY');
     // Suspend WebKit AudioContext so native can claim the audio session immediately
     if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'running') {
       audioCtx.suspend().catch(() => {});
@@ -492,6 +493,7 @@ document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventD
     _active = false;
     bar.classList.remove('tx');
     lbl.textContent = 'HOLD TO TALK';
+    haptic('LIGHT');
     nativeBridge({ type: 'ptt-direct-end' });
     // Resume AudioContext so incoming audio playback works again
     if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'suspended') {
