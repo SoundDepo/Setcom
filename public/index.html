@@ -654,6 +654,7 @@ async function callChannel(ch, btn) {
 }
 function handleCall(name, channel) {
   haptic('NOTIFICATION');
+  nativeBridge({ type: 'page-alert', name: name, channel: channel });
   const banner = document.getElementById('incomingBanner');
   banner.style.display = 'block';
   banner.textContent = `📞 ${name} calling ${chLabels[channel] || channel}`;
