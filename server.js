@@ -15,14 +15,20 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 // ---- APNs ----
 let apnProvider = null;
 if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
-  apnProvider = new apn.Provider({
-    token: {
-      key: Buffer.from(process.env.APN_KEY.replace(/\\n/g, '\n')),
-      keyId: process.env.APN_KEY_ID,
-      teamId: process.env.APN_TEAM_ID,
-    },
-    production: true,
-  });
+  try {
+    const rawKey = process.env.APN_KEY.replace(/\\n/g, '\n');
+    apnProvider = new apn.Provider({
+      token: {
+        key: Buffer.from(rawKey),
+        keyId: process.env.APN_KEY_ID,
+        teamId: process.env.APN_TEAM_ID,
+      },
+      production: true,
+    });
+    console.log('[APNs] Provider initialized');
+  } catch (e) {
+    console.error('[APNs] Failed to initialize:', e.message);
+  }
 }
 
 const BUNDLE_ID = process.env.BUNDLE_ID || 'com.sounddepo.setcom';
