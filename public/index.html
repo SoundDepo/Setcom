@@ -113,6 +113,28 @@
   .tx-status.on { color: var(--green); }
   body.native .ptt-wrap { display: none; }
 
+  /* Native PTT bar — instant response, no hold needed */
+  #nativePTTBar {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 72px;
+    background: var(--surface);
+    border-top: 1px solid #222;
+    align-items: center; justify-content: center;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none; cursor: pointer;
+    transition: background 0.08s;
+    z-index: 100;
+  }
+  #nativePTTBar.tx { background: #0a1f0d; border-top-color: var(--green); }
+  #nativePTTBar span {
+    font-size: 13px; font-weight: 700; letter-spacing: 4px;
+    color: var(--muted); text-transform: uppercase; pointer-events: none;
+  }
+  #nativePTTBar.tx span { color: var(--green); }
+  body.native #nativePTTBar { display: flex; }
+  body.native .app-inner { padding-bottom: 72px; }
+
   /* ---- Incoming banner ---- */
   #incomingBanner {
     display: none; background: #0f1a10; border: 1px solid var(--green);
@@ -201,6 +223,11 @@
     <!-- Crew -->
     <div class="section-title">CREW ONLINE</div>
     <div class="roster-list" id="rosterList"><div class="roster-item"><span style="color:var(--muted);font-size:12px">No one else online</span></div></div>
+  </div>
+
+  <!-- Native PTT bar — fires on touchstart, no hold required -->
+  <div id="nativePTTBar">
+    <span id="nativePTTLabel">HOLD TO TALK</span>
   </div>
 
   <!-- PTT -->
@@ -431,6 +458,34 @@ function stopTx(e) {
 // Spacebar
 document.addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); startTx(); } });
 document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventDefault(); stopTx(); } });
+
+// Native PTT bar — instant on touchstart, no hold delay
+(function () {
+  const bar = document.getElementById('nativePTTBar');
+  const lbl = document.getElementById('nativePTTLabel');
+  let _active = false;
+
+  function barDown(e) {
+    e.preventDefault();
+    if (_active) return;
+    _active = true;
+    bar.classList.add('tx');
+    lbl.textContent = '● TRANSMITTING';
+    nativeBridge({ type: 'ptt-begin' });
+  }
+  function barUp(e) {
+    e.preventDefault();
+    if (!_active) return;
+    _active = false;
+    bar.classList.remove('tx');
+    lbl.textContent = 'HOLD TO TALK';
+    nativeBridge({ type: 'ptt-end' });
+  }
+
+  bar.addEventListener('touchstart',  barDown, { passive: false });
+  bar.addEventListener('touchend',    barUp,   { passive: false });
+  bar.addEventListener('touchcancel', barUp,   { passive: false });
+})();
 
 // ---- Binary relay (send) ----
 async function startBinaryRelay() {
