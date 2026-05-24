@@ -99,6 +99,9 @@ wss.on('connection', (ws) => {
     if (isBinary) {
       const client = clients.get(id);
       if (!client) return;
+      if (!client._audioFrames) { client._audioFrames = 0; }
+      client._audioFrames++;
+      if (client._audioFrames === 1) console.log(`[AUDIO] first frame from ${client.name} (${raw.length} bytes)`);
       for (const [peerId, peer] of clients) {
         if (peerId === id) continue;
         if (peer.name && client.name && peer.name === client.name) continue; // no self-echo
@@ -132,6 +135,7 @@ wss.on('connection', (ws) => {
         break;
 
       case 'ptt-start':
+        console.log(`[PTT-START] ${client.name} → ${msg.channel}`);
         broadcast({ type: 'ptt-start', from: id, name: client.name, channel: msg.channel }, id);
         // Wake backgrounded phones on the same channel
         for (const [, peer] of clients) {
