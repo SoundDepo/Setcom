@@ -220,7 +220,10 @@
 
 <script>
 // ---- Config ----
-const WS_URL = location.origin.replace(/^http/, 'ws');
+// On native (Capacitor) location.origin is capacitor://localhost — use the Railway server directly.
+const WS_URL = (location.protocol === 'capacitor:' || location.protocol === 'ionic:')
+  ? 'wss://setcom-production.up.railway.app'
+  : location.origin.replace(/^http/, 'ws');
 
 const CHANNELS = [
   { id: 'director', label: 'DIRECTOR',     sub: 'Director / DIT',        color: '#a78bfa' },
