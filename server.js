@@ -86,6 +86,24 @@ function sendTo(id, data) {
 // ---- Per-channel call cooldown (5s) ----
 const callCooldown = new Map();
 
+// ---- Zombie connection cleanup (ping every 30s, drop if no pong in 10s) ----
+setInterval(() => {
+  for (const [id, c] of clients) {
+    if (c.ws.readyState !== 1) { clients.delete(id); continue; }
+    if (c._waitingPong) {
+      console.log(`[ZOMBIE] dropping ${c.name || id}`);
+      if (c.transmitting && c.name) broadcast({ type: 'ptt-stop', from: id, name: c.name }, id);
+      c.ws.terminate();
+      clients.delete(id);
+      broadcast({ type: 'roster', roster: getRoster() });
+      continue;
+    }
+    c._waitingPong = true;
+    c.ws.ping();
+  }
+}, 30000);
+
+
 // ---- WebSocket ----
 wss.on('connection', (ws) => {
   const id = uuidv4();
@@ -93,6 +111,11 @@ wss.on('connection', (ws) => {
                      pushToken: null, voipToken: null, pttToken: null });
 
   ws.send(JSON.stringify({ type: 'welcome', id, roster: getRoster() }));
+
+  ws.on('pong', () => {
+    const c = clients.get(id);
+    if (c) c._waitingPong = false;
+  });
 
   ws.on('message', async (raw, isBinary) => {
     // ---- Binary audio frames: route to matching-channel clients ----
