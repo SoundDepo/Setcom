@@ -549,9 +549,10 @@ function playAudio(arrayBuffer) {
   src.buffer = buf;
   src.connect(audioCtx.destination);
   const now = audioCtx.currentTime;
-  const start = Math.max(now, _nextPlayTime);
-  src.start(start);
-  _nextPlayTime = start + buf.duration;
+  // Reset if buffer drifted — prevents silent gap when a new speaker starts
+  if (_nextPlayTime < now || _nextPlayTime > now + 0.25) _nextPlayTime = now;
+  src.start(_nextPlayTime);
+  _nextPlayTime += buf.duration;
 }
 
 // ---- Mic ----
