@@ -16,7 +16,11 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 let apnProvider = null;
 if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
   try {
-    const rawKey = process.env.APN_KEY.replace(/\\n/g, '\n');
+    const raw = process.env.APN_KEY;
+    // Support both base64-encoded and raw PEM (with literal \n escapes)
+    const rawKey = raw.includes('-----BEGIN')
+      ? raw.replace(/\\n/g, '\n')
+      : Buffer.from(raw, 'base64').toString('utf8');
     apnProvider = new apn.Provider({
       token: {
         key: Buffer.from(rawKey),
