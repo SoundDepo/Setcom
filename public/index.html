@@ -479,6 +479,10 @@ document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventD
     _active = true;
     bar.classList.add('tx');
     lbl.textContent = '● TRANSMITTING';
+    // Suspend WebKit AudioContext so the PTT framework can claim the session immediately
+    if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'running') {
+      audioCtx.suspend().catch(() => {});
+    }
     nativeBridge({ type: 'ptt-begin' });
   }
   function barUp(e) {
@@ -488,6 +492,10 @@ document.addEventListener('keyup',   e => { if (e.code === 'Space') { e.preventD
     bar.classList.remove('tx');
     lbl.textContent = 'HOLD TO TALK';
     nativeBridge({ type: 'ptt-end' });
+    // Resume AudioContext so incoming audio playback works again
+    if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
   }
 
   bar.addEventListener('touchstart',  barDown, { passive: false });
