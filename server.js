@@ -53,7 +53,7 @@ async function sendPTTPush(token, speaker) {
   const note = new apn.Notification();
   note.expiry = Math.floor(Date.now() / 1000) + 30;
   note.payload = { speaker };
-  note.topic = `${BUNDLE_ID}.pushToTalk`;
+  note.topic = `${BUNDLE_ID}.voip-ptt`;
   note.priority = 10;
   await apnProvider.send(note, token).catch(() => {});
 }
