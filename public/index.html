@@ -259,7 +259,7 @@ function nativeBridge(obj) {
   try { window.webkit.messageHandlers.setcomBridge.postMessage(obj); } catch(_){}
 }
 
-// Called by native PTT framework
+// Called by native PTT framework (Dynamic Island or Watch)
 let _nativePTTActive = false;
 function onNativePTTBegin() {
   _nativePTTActive = true;
@@ -268,8 +268,7 @@ function onNativePTTBegin() {
   document.getElementById('pttBtn').classList.add('tx');
   document.getElementById('txStatus').textContent = '● TRANSMITTING';
   document.getElementById('txStatus').classList.add('on');
-  wsSend({ type: 'ptt-start', channel: selectedCh });
-  startBinaryRelay();
+  // NativeAudioManager sends ptt-start and audio — no Web Audio needed
 }
 function onNativePTTEnd() {
   _nativePTTActive = false;
@@ -278,8 +277,7 @@ function onNativePTTEnd() {
   document.getElementById('pttBtn').classList.remove('tx');
   document.getElementById('txStatus').textContent = '— STANDBY —';
   document.getElementById('txStatus').classList.remove('on');
-  stopBinaryRelay();
-  wsSend({ type: 'ptt-stop' });
+  // NativeAudioManager sent ptt-stop already — nothing to clean up here
 }
 
 // Push token callbacks
@@ -392,9 +390,16 @@ async function startTx(e) {
   document.getElementById('txStatus').classList.add('on');
   setTimeout(async () => {
     if (!isTransmitting) return;
-    wsSend({ type: 'ptt-start', channel: selectedCh });
-    await startBinaryRelay();
-    if (!_nativePTTActive) nativeBridge({ type: 'ptt-begin' });
+    const onNative = location.protocol === 'capacitor:' || location.protocol === 'ionic:';
+    if (onNative) {
+      nativeBridge({ type: 'ptt-begin' });
+      // NativeAudioManager owns audio + sends ptt-start to server
+    } else {
+      wsSend({ type: 'ptt-start', channel: selectedCh });
+      const ok = await getMic();
+      if (!ok) { stopTx(); return; }
+      await startBinaryRelay();
+    }
   }, 80);
 }
 
@@ -408,9 +413,14 @@ function stopTx(e) {
   document.getElementById('pttBtn').classList.remove('tx');
   document.getElementById('txStatus').textContent = '— STANDBY —';
   document.getElementById('txStatus').classList.remove('on');
-  stopBinaryRelay();
-  wsSend({ type: 'ptt-stop' });
-  if (wasNative) nativeBridge({ type: 'ptt-end' });
+  const onNative = location.protocol === 'capacitor:' || location.protocol === 'ionic:';
+  if (onNative) {
+    if (!wasNative) nativeBridge({ type: 'ptt-end' });
+    // NativeAudioManager sends ptt-stop to server
+  } else {
+    stopBinaryRelay();
+    wsSend({ type: 'ptt-stop' });
+  }
 }
 
 // Spacebar
