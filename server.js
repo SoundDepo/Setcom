@@ -209,6 +209,7 @@ wss.on('connection', (ws) => {
           if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
           else if (peer.pushToken) { sendPush(peer.pushToken, 'SETCOM', `${client.name} is calling`); pushed++; }
         }
+        console.log(`[CALL] ${client.name} → ch=${ch}, pushed VoIP to ${pushed} device(s)`);
         sendTo(id, { type: 'call-result', channel: ch, pushed });
         break;
       }
@@ -219,6 +220,7 @@ wss.on('connection', (ws) => {
 
       case 'register-voip-token':
         client.voipToken = msg.token;
+        console.log(`[VoIP] Token registered for ${client.name || 'unknown'}`);
         break;
 
       case 'register-ptt-token':
