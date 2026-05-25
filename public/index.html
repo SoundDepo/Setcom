@@ -326,8 +326,15 @@ function receivePTTPushToken(token) {
   pttPushToken = token;
   if (ws && ws.readyState === 1) wsSend({ type: 'register-ptt-token', token });
 }
+let pendingVoIPToken = null;
 function receiveVoIPToken(token) {
+  pendingVoIPToken = token;
   if (ws && ws.readyState === 1) wsSend({ type: 'register-voip-token', token });
+}
+let pendingPushToken = null;
+function receivePushToken(token) {
+  pendingPushToken = token;
+  if (ws && ws.readyState === 1) wsSend({ type: 'register-push-token', token });
 }
 function nativeAudioHandoff() {}  // reserved for background handoff
 function webRTCHandback() {}
@@ -374,6 +381,8 @@ function connectWS() {
     document.getElementById('connDot').classList.add('on');
     wsSend({ type: 'join', name: myName, role: myRole, channel: selectedCh });
     if (pttPushToken) wsSend({ type: 'register-ptt-token', token: pttPushToken });
+    if (pendingVoIPToken) wsSend({ type: 'register-voip-token', token: pendingVoIPToken });
+    if (pendingPushToken) wsSend({ type: 'register-push-token', token: pendingPushToken });
   };
 
   ws.onclose = () => {
@@ -619,6 +628,7 @@ function buildChannelList() {
 
 function selectChannel(ch) {
   selectedCh = ch;
+  localStorage.setItem('sc_channel', ch);
   document.querySelectorAll('.ch-card').forEach(el => el.classList.remove('selected'));
   const card = document.getElementById(`ch-${ch}`);
   if (card) card.classList.add('selected');
@@ -654,6 +664,7 @@ async function callChannel(ch, btn) {
 }
 function handleCall(name, channel) {
   haptic('NOTIFICATION');
+  console.log('[CALL] bridge available:', !!(window.webkit?.messageHandlers?.setcomBridge));
   nativeBridge({ type: 'page-alert', name: name, channel: channel });
   const banner = document.getElementById('incomingBanner');
   banner.style.display = 'block';

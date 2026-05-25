@@ -27,7 +27,7 @@ if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
         keyId: process.env.APN_KEY_ID,
         teamId: process.env.APN_TEAM_ID,
       },
-      production: true,
+      production: process.env.APN_PRODUCTION === 'true',
     });
     console.log('[APNs] Provider initialized');
   } catch (e) {
@@ -37,15 +37,20 @@ if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
 
 const BUNDLE_ID = process.env.BUNDLE_ID || 'com.sounddepo.setcom';
 
-async function sendPush(token, title, body) {
+async function sendAlertPush(token, title, body, data = {}) {
   if (!apnProvider || !token) return;
   const note = new apn.Notification();
-  note.expiry = Math.floor(Date.now() / 1000) + 60;
+  note.expiry = Math.floor(Date.now() / 1000) + 3600;
   note.badge = 1;
   note.sound = 'default';
   note.alert = { title, body };
   note.topic = BUNDLE_ID;
-  await apnProvider.send(note, token).catch(() => {});
+  note.priority = 10;
+  note.pushType = 'alert';
+  note.aps['interruption-level'] = 'time-sensitive';
+  note.payload = data;
+  const result = await apnProvider.send(note, token).catch(e => ({ failed: [{ error: e }] }));
+  if (result?.failed?.length) console.log('[APNs] Alert push failed:', result.failed[0].response || result.failed[0].error);
 }
 
 async function sendVoIPPush(token, data) {
@@ -55,7 +60,8 @@ async function sendVoIPPush(token, data) {
   note.payload = data;
   note.topic = `${BUNDLE_ID}.voip`;
   note.priority = 10;
-  await apnProvider.send(note, token).catch(() => {});
+  const result = await apnProvider.send(note, token).catch(e => ({ failed: [{ error: e }] }));
+  if (result?.failed?.length) console.log('[APNs] VoIP push failed:', result.failed[0].response || result.failed[0].error);
 }
 
 async function sendPTTPush(token, speaker) {
@@ -207,7 +213,7 @@ wss.on('connection', (ws) => {
           if (!chMatch) continue;
           sendTo(peerId, { type: 'incoming-call', from: id, name: client.name, channel: ch });
           if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
-          else if (peer.pushToken) { sendPush(peer.pushToken, 'SETCOM', `${client.name} is calling`); pushed++; }
+          if (peer.pushToken) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch}`, { name: client.name, channel: ch }); pushed++; }
         }
         console.log(`[CALL] ${client.name} → ch=${ch}, pushed VoIP to ${pushed} device(s)`);
         sendTo(id, { type: 'call-result', channel: ch, pushed });
