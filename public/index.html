@@ -725,6 +725,8 @@ function hapticNotification() {
     el.addEventListener('keydown', e => e.stopPropagation());
     el.addEventListener('keyup',   e => e.stopPropagation());
   });
+
+  if (name && role && channel) join();
 })();
 </script>
 </body>
