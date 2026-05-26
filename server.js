@@ -69,6 +69,10 @@ async function sendVoIPPush(token, data) {
 // { ws, name, role, channel, device, pushToken, voipToken, pttToken }
 const clients = new Map();
 
+// ---- Persistent token store (survives WebSocket disconnect) ----
+// name → { voipToken, pushToken, channel }
+const tokenStore = new Map();
+
 function getRoster() {
   const list = [];
   for (const [id, c] of clients) {
@@ -158,29 +162,48 @@ wss.on('connection', (ws) => {
         client.role    = msg.role    || 'crew';
         client.channel = msg.channel || (msg.device === 'native-audio' ? '' : 'all');
         client.device  = msg.device  || 'phone';
+        // Restore persisted tokens in case register-* hasn't arrived yet
+        if (tokenStore.has(client.name)) {
+          const saved = tokenStore.get(client.name);
+          if (!client.voipToken) client.voipToken = saved.voipToken;
+          if (!client.pushToken) client.pushToken = saved.pushToken;
+        }
         console.log(`[JOIN] ${client.name} (${client.role}) ch=${client.channel} dev=${client.device}`);
         broadcast({ type: 'roster', roster: getRoster() });
         break;
 
       case 'channel-change':
         client.channel = msg.channel || client.channel;
+        if (client.name) {
+          const e = tokenStore.get(client.name) || {};
+          tokenStore.set(client.name, { ...e, channel: client.channel });
+        }
         broadcast({ type: 'roster', roster: getRoster() });
         break;
 
-      case 'ptt-start':
-        console.log(`[PTT-START] ${client.name} → ${msg.channel}`);
+      case 'ptt-start': {
+        const pttCh = msg.channel;
+        console.log(`[PTT-START] ${client.name} → ${pttCh}`);
         client.transmitting = true;
-        client.pttChannel = msg.channel;
-        broadcast({ type: 'ptt-start', from: id, name: client.name, channel: msg.channel }, id);
-        // Wake backgrounded phones on the same channel
+        client.pttChannel = pttCh;
+        broadcast({ type: 'ptt-start', from: id, name: client.name, channel: pttCh }, id);
+        const pushedPTT = new Set();
+        // Wake connected peers
         for (const [, peer] of clients) {
           if (peer.name === client.name) continue;
-          const ch = msg.channel;
-          const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
+          const chMatch = pttCh === 'all' || peer.channel === 'all' || peer.channel === pttCh;
           if (!chMatch) continue;
-          if (peer.voipToken) sendVoIPPush(peer.voipToken, { type: 'ptt-start', name: client.name, channel: ch }).catch(() => {});
+          if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'ptt-start', name: client.name, channel: pttCh }).catch(() => {}); pushedPTT.add(peer.name); }
+        }
+        // Wake offline (killed) peers from token store
+        for (const [name, reg] of tokenStore) {
+          if (name === client.name || pushedPTT.has(name)) continue;
+          const chMatch = pttCh === 'all' || (reg.channel && (reg.channel === 'all' || reg.channel === pttCh));
+          if (!chMatch) continue;
+          if (reg.voipToken) sendVoIPPush(reg.voipToken, { type: 'ptt-start', name: client.name, channel: pttCh }).catch(() => {});
         }
         break;
+      }
 
       case 'ptt-stop':
         client.transmitting = false;
@@ -198,6 +221,8 @@ wss.on('connection', (ws) => {
         }
         callCooldown.set(key, now);
         let pushed = 0;
+        const pushedCall = new Set();
+        // Notify online peers
         for (const [peerId, peer] of clients) {
           if (peerId === id) continue;
           const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
@@ -205,19 +230,36 @@ wss.on('connection', (ws) => {
           sendTo(peerId, { type: 'incoming-call', from: id, name: client.name, channel: ch });
           if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
           if (peer.pushToken) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch}`, { name: client.name, channel: ch }); pushed++; }
+          if (peer.name) pushedCall.add(peer.name);
         }
-        console.log(`[CALL] ${client.name} → ch=${ch}, pushed VoIP to ${pushed} device(s)`);
+        // Also push to offline (killed) peers in token store
+        for (const [name, reg] of tokenStore) {
+          if (name === client.name || pushedCall.has(name)) continue;
+          const chMatch = ch === 'all' || (reg.channel && (reg.channel === 'all' || reg.channel === ch));
+          if (!chMatch) continue;
+          if (reg.voipToken) { sendVoIPPush(reg.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
+          if (reg.pushToken) { sendAlertPush(reg.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch}`, { name: client.name, channel: ch }); pushed++; }
+        }
+        console.log(`[CALL] ${client.name} → ch=${ch}, pushed to ${pushed} device(s) (${pushedCall.size} online, ${tokenStore.size - (tokenStore.has(client.name) ? 1 : 0) - pushedCall.size} offline)`);
         sendTo(id, { type: 'call-result', channel: ch, pushed });
         break;
       }
 
       case 'register-push-token':
         client.pushToken = msg.token;
+        if (client.name) {
+          const e = tokenStore.get(client.name) || {};
+          tokenStore.set(client.name, { ...e, pushToken: msg.token, channel: client.channel });
+        }
         break;
 
       case 'register-voip-token':
         client.voipToken = msg.token;
-        console.log(`[VoIP] Token registered for ${client.name || 'unknown'}`);
+        if (client.name) {
+          const e = tokenStore.get(client.name) || {};
+          tokenStore.set(client.name, { ...e, voipToken: msg.token, channel: client.channel });
+          console.log(`[VoIP] Token stored for ${client.name}`);
+        }
         break;
 
 
