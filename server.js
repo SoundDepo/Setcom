@@ -9,7 +9,25 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// HTTP token registration — iOS app calls this on every launch (including background VoIP wake)
+// so tokens survive server restarts/deploys without needing the WebSocket to be open.
+app.post('/api/register-token', (req, res) => {
+  const { name, voipToken, pushToken, channel } = req.body || {};
+  if (name && (voipToken || pushToken)) {
+    const e = tokenStore.get(name) || {};
+    tokenStore.set(name, {
+      voipToken:  voipToken  || e.voipToken,
+      pushToken:  pushToken  || e.pushToken,
+      channel:    channel    || e.channel,
+    });
+    console.log(`[HTTP] Token registered for ${name} ch=${channel}`);
+  }
+  res.json({ ok: true });
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ---- APNs ----
