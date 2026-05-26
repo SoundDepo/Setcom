@@ -240,25 +240,24 @@ wss.on('connection', (ws) => {
         callCooldown.set(key, now);
         let pushed = 0;
         const pushedCall = new Set();
-        // Notify online peers
+        // Notify online peers via WebSocket + alert push (no VoIP push for page alerts)
         for (const [peerId, peer] of clients) {
           if (peerId === id) continue;
           const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
           if (!chMatch) continue;
           sendTo(peerId, { type: 'incoming-call', from: id, name: client.name, channel: ch });
-          if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
-          if (peer.pushToken) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch}`, { name: client.name, channel: ch }); pushed++; }
+          if (peer.pushToken) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
           if (peer.name) pushedCall.add(peer.name);
         }
-        // Also push to offline (killed) peers in token store
+        // Alert push to offline (killed/backgrounded) peers — delivered by iOS directly, no app needed
         for (const [name, reg] of tokenStore) {
           if (name === client.name || pushedCall.has(name)) continue;
-          const chMatch = ch === 'all' || (reg.channel && (reg.channel === 'all' || reg.channel === ch));
+          const regCh = reg.channel || '';
+          const chMatch = ch === 'all' || regCh === 'all' || regCh === ch || regCh === '';
           if (!chMatch) continue;
-          if (reg.voipToken) { sendVoIPPush(reg.voipToken, { type: 'incoming-call', name: client.name, channel: ch }); pushed++; }
-          if (reg.pushToken) { sendAlertPush(reg.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch}`, { name: client.name, channel: ch }); pushed++; }
+          if (reg.pushToken) { sendAlertPush(reg.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
         }
-        console.log(`[CALL] ${client.name} → ch=${ch}, pushed to ${pushed} device(s) (${pushedCall.size} online, ${tokenStore.size - (tokenStore.has(client.name) ? 1 : 0) - pushedCall.size} offline)`);
+        console.log(`[CALL] ${client.name} → ch=${ch}, alert pushed to ${pushed} device(s)`);
         sendTo(id, { type: 'call-result', channel: ch, pushed });
         break;
       }
