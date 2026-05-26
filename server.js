@@ -64,15 +64,6 @@ async function sendVoIPPush(token, data) {
   if (result?.failed?.length) console.log('[APNs] VoIP push failed:', result.failed[0].response || result.failed[0].error);
 }
 
-async function sendPTTPush(token, speaker) {
-  if (!apnProvider || !token) return;
-  const note = new apn.Notification();
-  note.expiry = Math.floor(Date.now() / 1000) + 30;
-  note.payload = { speaker };
-  note.topic = `${BUNDLE_ID}.voip-ptt`;
-  note.priority = 10;
-  await apnProvider.send(note, token).catch(() => {});
-}
 
 // ---- Client store ----
 // { ws, name, role, channel, device, pushToken, voipToken, pttToken }
@@ -187,7 +178,7 @@ wss.on('connection', (ws) => {
           const ch = msg.channel;
           const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
           if (!chMatch) continue;
-          if (peer.pttToken) sendPTTPush(peer.pttToken, client.name).catch(() => {});
+          if (peer.voipToken) sendVoIPPush(peer.voipToken, { type: 'ptt-start', name: client.name, channel: ch }).catch(() => {});
         }
         break;
 
@@ -229,9 +220,6 @@ wss.on('connection', (ws) => {
         console.log(`[VoIP] Token registered for ${client.name || 'unknown'}`);
         break;
 
-      case 'register-ptt-token':
-        client.pttToken = msg.token;
-        break;
 
       default:
         break;
