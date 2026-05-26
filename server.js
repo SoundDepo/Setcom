@@ -28,6 +28,22 @@ app.post('/api/register-token', (req, res) => {
   res.json({ ok: true });
 });
 
+// Debug endpoint — shows what tokens the server currently has
+app.get('/api/debug', (req, res) => {
+  const store = {};
+  for (const [name, reg] of tokenStore) {
+    store[name] = {
+      hasVoip:    !!reg.voipToken,
+      hasPush:    !!reg.pushToken,
+      channel:    reg.channel,
+      pushPrefix: reg.pushToken ? reg.pushToken.slice(0, 8) : null,
+    };
+  }
+  const online = [];
+  for (const [, c] of clients) { if (c.name) online.push({ name: c.name, ch: c.channel }); }
+  res.json({ tokenStore: store, online });
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ---- APNs ----
@@ -56,7 +72,7 @@ if (process.env.APN_KEY && process.env.APN_KEY_ID && process.env.APN_TEAM_ID) {
 const BUNDLE_ID = process.env.BUNDLE_ID || 'com.sounddepo.setcom';
 
 async function sendAlertPush(token, title, body, data = {}) {
-  if (!apnProvider || !token) return;
+  if (!apnProvider || !token) { console.log('[APNs] Alert push skipped — no provider or token'); return; }
   const note = new apn.Notification();
   note.expiry = Math.floor(Date.now() / 1000) + 3600;
   note.badge = 1;
@@ -65,10 +81,14 @@ async function sendAlertPush(token, title, body, data = {}) {
   note.topic = BUNDLE_ID;
   note.priority = 10;
   note.pushType = 'alert';
-  note.aps['interruption-level'] = 'time-sensitive';
   note.payload = data;
+  console.log(`[APNs] Sending alert push → ${token.slice(0, 8)}... title="${title}"`);
   const result = await apnProvider.send(note, token).catch(e => ({ failed: [{ error: e }] }));
-  if (result?.failed?.length) console.log('[APNs] Alert push failed:', result.failed[0].response || result.failed[0].error);
+  if (result?.failed?.length) {
+    console.log('[APNs] Alert push FAILED:', JSON.stringify(result.failed[0].response || result.failed[0].error));
+  } else {
+    console.log('[APNs] Alert push sent OK');
+  }
 }
 
 async function sendVoIPPush(token, data) {
@@ -267,6 +287,7 @@ wss.on('connection', (ws) => {
         if (client.name) {
           const e = tokenStore.get(client.name) || {};
           tokenStore.set(client.name, { ...e, pushToken: msg.token, channel: client.channel });
+          console.log(`[WS] Push token stored for ${client.name} (${msg.token.slice(0, 8)}...)`);
         }
         break;
 
