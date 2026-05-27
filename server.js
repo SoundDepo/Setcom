@@ -267,13 +267,16 @@ wss.on('connection', (ws) => {
           if (peer.pushToken && !pushedCall.has(peer.name)) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
           if (peer.name) pushedCall.add(peer.name);
         }
-        // Alert push to offline (killed/backgrounded) peers — delivered by iOS directly, no app needed
+        // Alert + VoIP push to offline (killed) peers
+        // Alert push → phone notification banner
+        // VoIP push → wakes app so it can forward page-alert to Watch via WCSession
         for (const [name, reg] of tokenStore) {
           if (name === client.name || pushedCall.has(name)) continue;
           const regCh = reg.channel || '';
           const chMatch = ch === 'all' || regCh === 'all' || regCh === ch || regCh === '';
           if (!chMatch) continue;
           if (reg.pushToken) { sendAlertPush(reg.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
+          if (reg.voipToken) sendVoIPPush(reg.voipToken, { type: 'page-alert', name: client.name, channel: ch }).catch(() => {});
         }
         console.log(`[CALL] ${client.name} → ch=${ch}, alert pushed to ${pushed} device(s)`);
         sendTo(id, { type: 'call-result', channel: ch, pushed });
