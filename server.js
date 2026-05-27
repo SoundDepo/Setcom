@@ -81,11 +81,21 @@ async function sendAlertPush(token, title, body, data = {}) {
   note.topic = BUNDLE_ID;
   note.priority = 10;
   note.pushType = 'alert';
+  note.aps = { ...note.aps, 'interruption-level': 'time-sensitive' };
   note.payload = data;
-  console.log(`[APNs] Sending alert push → ${token.slice(0, 8)}... title="${title}"`);
+  console.log(`[APNs] Alert push → len=${token.length} prefix=${token.slice(0, 8)} topic=${note.topic}`);
   const result = await apnProvider.send(note, token).catch(e => ({ failed: [{ error: e }] }));
   if (result?.failed?.length) {
+    const reason = result.failed[0].response?.reason;
     console.log('[APNs] Alert push FAILED:', JSON.stringify(result.failed[0].response || result.failed[0].error));
+    if (reason === 'BadDeviceToken' || reason === 'Unregistered') {
+      for (const [name, reg] of tokenStore) {
+        if (reg.pushToken === token) {
+          tokenStore.set(name, { ...reg, pushToken: null });
+          console.log(`[APNs] Purged stale push token for ${name}`);
+        }
+      }
+    }
   } else {
     console.log('[APNs] Alert push sent OK');
   }
@@ -98,8 +108,10 @@ async function sendVoIPPush(token, data) {
   note.payload = data;
   note.topic = `${BUNDLE_ID}.voip`;
   note.priority = 10;
+  console.log(`[APNs] VoIP push → len=${token.length} prefix=${token.slice(0, 8)} topic=${note.topic}`);
   const result = await apnProvider.send(note, token).catch(e => ({ failed: [{ error: e }] }));
-  if (result?.failed?.length) console.log('[APNs] VoIP push failed:', result.failed[0].response || result.failed[0].error);
+  if (result?.failed?.length) console.log('[APNs] VoIP push FAILED:', result.failed[0].response || result.failed[0].error);
+  else console.log('[APNs] VoIP push sent OK');
 }
 
 
@@ -225,21 +237,7 @@ wss.on('connection', (ws) => {
         client.transmitting = true;
         client.pttChannel = pttCh;
         broadcast({ type: 'ptt-start', from: id, name: client.name, channel: pttCh }, id);
-        const pushedPTT = new Set();
-        // Wake connected peers
-        for (const [, peer] of clients) {
-          if (peer.name === client.name) continue;
-          const chMatch = pttCh === 'all' || peer.channel === 'all' || peer.channel === pttCh;
-          if (!chMatch) continue;
-          if (peer.voipToken) { sendVoIPPush(peer.voipToken, { type: 'ptt-start', name: client.name, channel: pttCh }).catch(() => {}); pushedPTT.add(peer.name); }
-        }
-        // Wake offline (killed) peers from token store
-        for (const [name, reg] of tokenStore) {
-          if (name === client.name || pushedPTT.has(name)) continue;
-          const chMatch = pttCh === 'all' || (reg.channel && (reg.channel === 'all' || reg.channel === pttCh));
-          if (!chMatch) continue;
-          if (reg.voipToken) sendVoIPPush(reg.voipToken, { type: 'ptt-start', name: client.name, channel: pttCh }).catch(() => {});
-        }
+        // No VoIP push — background audio keepalive keeps WebSocket alive on all devices
         break;
       }
 
@@ -266,7 +264,7 @@ wss.on('connection', (ws) => {
           const chMatch = ch === 'all' || peer.channel === 'all' || peer.channel === ch;
           if (!chMatch) continue;
           sendTo(peerId, { type: 'incoming-call', from: id, name: client.name, channel: ch });
-          if (peer.pushToken) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
+          if (peer.pushToken && !pushedCall.has(peer.name)) { sendAlertPush(peer.pushToken, '📞 SETCOM CALL', `${client.name} · ${ch.toUpperCase()}`, { name: client.name, channel: ch }); pushed++; }
           if (peer.name) pushedCall.add(peer.name);
         }
         // Alert push to offline (killed/backgrounded) peers — delivered by iOS directly, no app needed
